@@ -2,7 +2,6 @@
 section AzureARC;
 
 CID = "3306fb45-23c7-44cb-ab71-dbbad0457366";
-//SID = "iNz8Q~4ZlUFYMt3hp5JQ_g0e5WeJChH.Kw_29cXK";
 SID = "";
 SQLQuery = "resources | where type =~ 'microsoft.azurearcdata/sqlserverinstances'";
 OSQuery = "resources | where type =~ 'Microsoft.HybridCompute/machines'";
