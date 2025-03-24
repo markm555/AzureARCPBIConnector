@@ -78,10 +78,6 @@ shared ExpandJsonArrays = (table as table, optional suffix as text) =>
         else
             cleanedTable;
 
-
-
-
-
 AddComputerName = (expandedtbl as table) =>
     let
         // Apply the function to the initial table
@@ -99,13 +95,6 @@ AddComputerName = (expandedtbl as table) =>
         addIdColumn = Table.AddColumn(expandedColumns, "Computer", each extractMachineName([id]))
     in
         addIdColumn;
-
-
-
-
-
-
-
 
 shared Table.ToNavigationTable = (
     table as table,
@@ -131,7 +120,7 @@ shared Table.ToNavigationTable = (
         navigationTable;
 
 // OAuth2 Flow
-StartLogin = (resourceUrl, state, display) =>
+/* StartLogin = (resourceUrl, state, display) =>
     let
         client_id = CID,
         redirect_uri = "https://oauth.powerbi.com/views/oauthredirect.html",
@@ -178,6 +167,16 @@ AzureARCKind = [
             WindowTitle = "Sign in to Azure",
             WindowHeight = 720,
             WindowWidth = 1024
+        ]
+    ]
+]; */
+
+AzureARCKind = [
+    Authentication = [
+        Aad = [
+            AuthorizationUri = "https://login.microsoftonline.com/common/oauth2/authorize",
+            Resource = "https://management.azure.com/"
+            //Scope = "https://management.azure.com/.default"
         ]
     ]
 ];
