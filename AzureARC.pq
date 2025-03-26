@@ -1,43 +1,48 @@
+//*******************************************************************************************************
+//*******************************************************************************************************
+// ***** Author: Mark Moore (Microsoft)
+// ***** Description: This file contains the M code for the AzureARC connector .
+// ***** Date: 2025-03-26
+// ***** Version: 1.0.0
+//*******************************************************************************************************
+//*******************************************************************************************************
+
+
 [Version = "1.0.0"]
 section AzureARC;
 
-CID = "3306fb45-23c7-44cb-ab71-dbbad0457366";
-SID = "";
+// Define variables used throughout the connector
 SQLQuery = "resources | where type =~ 'microsoft.azurearcdata/sqlserverinstances'";
 OSQuery = "resources | where type =~ 'Microsoft.HybridCompute/machines'";
 DatabaseQuery = "resources | where type =~ 'microsoft.azurearcdata/sqlserverinstances/databases'";
+SQLMIQuery = "resources | where type =~ 'microsoft.sql/managedinstances'";
+SQLMIDBQuery = "resources | where type =~ 'microsoft.sql/managedinstances/databases'";
+AzureSQLDBQuery = "resources | where type =~ 'microsoft.sql/servers'";
+AzureSQLDBQueryDB = "resources | where type =~ 'microsoft.sql/servers/databases'";
 url = "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01";
 
 
+// Metadata for the connector
 [DataSource.Kind="AzureARCKind", Publish="AzureARCPublish"]
 
 
-// Individual shared entities
+// Navigation table for the connector -- This is the only way I could get multiple tables to load within a sinlgle connector
+// This and other helper functions can be found here: https://learn.microsoft.com/en-us/power-query/helper-functions
 
-shared NavTable = () as table =>
+
+shared ARCSQL = () as table =>
     let
         source = #table({"Name", "Data", "ItemKind", "ItemName", "IsLeaf"}, {
-            { "OS", ExpandJsonArrays(makeRequest(OSQuery)), "Table", "Table", true },
-            { "SQL", ExpandJsonArrays(makeRequest(SQLQuery)), "Table", "Table", true },
-            { "Database", ExpandJsonArrays(makeRequest(DatabaseQuery)), "Table", "Table", true }
+            { "OS", AddComputerName(ExpandJsonArrays(makeRequest(OSQuery))), "Table", "Table", true },
+            { "SQL", AddComputerName(ExpandJsonArrays(makeRequest(SQLQuery))), "Table", "Table", true },
+            { "Database", AddComputerName(ExpandJsonArrays(makeRequest(DatabaseQuery))), "Table", "Table", true }
         }),
         navTable = Table.ToNavigationTable(source, {"Name"}, "Name", "Data", "ItemKind", "ItemName", "IsLeaf")
     in
         navTable;
 
-// Expand JSON Arrays
 
-/* shared GetStorageMode = () as text =>
-    let
-        options = {"Import", "DirectQuery"},
-        prompt = "Select Storage Mode (Import or DirectQuery)",
-        userChoice = if Extension.CurrentCredential()[#"Mode"] <> null then
-            Extension.CurrentCredential()[#"Mode"]
-        else
-            "Import" // Default to Import if no mode is selected
-    in
-        if List.Contains(options, userChoice) then userChoice else "Import"; */
-
+// This function is used to make the API request to Azure ARC.  It has one paramert which is the query to be executed again Azure Graph.
 shared makeRequest = (query) =>
     let
         //mode = GetStorageMode(),
@@ -55,6 +60,7 @@ shared makeRequest = (query) =>
     in
         tableData;
 
+// This function is used to expand the JSON arrays returned from the API request
 shared ExpandJsonArrays = (table as table, optional suffix as text) =>
     let
         columnNames = Table.ColumnNames(table),
@@ -77,11 +83,14 @@ shared ExpandJsonArrays = (table as table, optional suffix as text) =>
             @ExpandJsonArrays(cleanedTable, suffix)
         else
             cleanedTable;
+            
+            
 
+//This function is used to extract the machine name from the id field so that each table will have a machine name that can be used to join the tables together
 AddComputerName = (expandedtbl as table) =>
     let
         // Apply the function to the initial table
-        expandedColumns = ExpandJsonArrays(expandedtbl),
+        //expandedColumns = ExpandJsonArrays(expandedtbl),
 
         // Function to extract machine name
         extractMachineName = (id) =>
@@ -92,10 +101,11 @@ AddComputerName = (expandedtbl as table) =>
                 machine_name,
 
         // Add new column 'id' with the extracted machine name
-        addIdColumn = Table.AddColumn(expandedColumns, "Computer", each extractMachineName([id]))
+        addIdColumn = Table.AddColumn(expandedtbl, "Computer", each extractMachineName([id]))
     in
         addIdColumn;
 
+// This is the helper function that is used to create the navigation table
 shared Table.ToNavigationTable = (
     table as table,
     keyColumns as list,
@@ -119,58 +129,9 @@ shared Table.ToNavigationTable = (
     in
         navigationTable;
 
-// OAuth2 Flow
-/* StartLogin = (resourceUrl, state, display) =>
-    let
-        client_id = CID,
-        redirect_uri = "https://oauth.powerbi.com/views/oauthredirect.html",
-        scope = "https://management.azure.com/.default",
-        authorization_uri = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-        loginUrl = authorization_uri & "?client_id=" & client_id & "&response_type=code&redirect_uri=" & Uri.EscapeDataString(redirect_uri) & "&scope=" & Uri.EscapeDataString(scope) & "&state=" & Uri.EscapeDataString(state)
-    in
-        [
-            LoginUri = loginUrl,
-            CallbackUri = redirect_uri,
-            WindowHeight = 720,
-            WindowWidth = 1024
-        ];
 
-FinishLogin = (context, callbackUri, state) =>
-    let
-        parts = Uri.Parts(callbackUri),
-        code = parts[Query][code],
-        redirect_uri = "https://oauth.powerbi.com/views/oauthredirect.html",
-        token_uri = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        client_id = CID,
-        client_secret = SID,
-        body = Text.ToBinary("grant_type=authorization_code&client_id=" & client_id & "&code=" & code & "&redirect_uri=" & Uri.EscapeDataString(redirect_uri) & "&client_secret=" & client_secret),
-        tokenResponse = Web.Contents(token_uri, [
-            Headers = [#"Content-Type" = "application/x-www-form-urlencoded"],
-            Content = body
-        ]),
-        tokenJson = Json.Document(tokenResponse)
-    in
-        tokenJson;
-
-// Data Source Kind
-AzureARCKind = [
-    Authentication = [
-        OAuth2 = [
-            AuthorizationUri = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-            TokenUri = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-            RedirectUri = "https://oauth.powerbi.com/views/oauthredirect.html",
-            ClientId = CID,
-            ClientSecret = SID,
-            Scope = "https://management.azure.com/.default",
-            StartLogin = StartLogin,
-            FinishLogin = FinishLogin,
-            WindowTitle = "Sign in to Azure",
-            WindowHeight = 720,
-            WindowWidth = 1024
-        ]
-    ]
-]; */
-
+// I am using AAD Authentication which will allow me to use the current user's credentials to authenticate to Azure ARC
+// This is the only way I could get the connector to work without requiring a service principal
 AzureARCKind = [
     Authentication = [
         Aad = [
